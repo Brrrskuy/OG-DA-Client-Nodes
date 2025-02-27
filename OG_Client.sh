@@ -1,25 +1,20 @@
 #!/bin/bash
-
 set -e
-
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 CYAN='\033[0;36m'
 NC='\033[0m'
-
 clear
 echo -e "${CYAN}========================================="
-echo -e "        🚀 Starting Auto Install Node 0g        "
+echo -e "        🚀 Starting Auto Install Node 0G        "
 echo -e "=========================================${NC}"
 sleep 2
-
 log() {
     local level=$1
     local message=$2
     local timestamp=$(date +"%Y-%m-%d %H:%M:%S")
     local border="-----------------------------------------------------"
-
     echo -e "${border}"
     case $level in
         "INFO") echo -e "${CYAN}[INFO] ${timestamp} - ${message}${NC}" ;;
@@ -29,13 +24,11 @@ log() {
     esac
     echo -e "${border}\n"
 }
-
 common() {
     local duration=$1
     local message=$2
     local end=$((SECONDS + duration))
     local spinner="⣷⣯⣟⡿⣿⡿⣟⣯⣷"
-
     echo -n -e "${YELLOW}${message}...${NC} "
     while [ $SECONDS -lt $end ]; do
         printf "\b${spinner:$((SECONDS % ${#spinner})):1}"
@@ -44,6 +37,27 @@ common() {
     printf "\r${GREEN}✔ Done!${NC} \n"
 }
 
+# Check if Docker is installed
+log "INFO" "🐳 Checking Docker installation"
+if command -v docker &> /dev/null; then
+    log "SUCCESS" "✅ Docker is already installed."
+else
+    log "INFO" "🔄 Installing Docker..."
+    sudo apt update
+    sudo apt install apt-transport-https ca-certificates curl software-properties-common -y 
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add - 
+    sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu focal stable" 
+    sudo apt-get install docker-ce docker-ce-cli containerd.io docker-compose-plugin -y
+    
+    # Check if Docker installed successfully
+    if command -v docker &> /dev/null; then
+        log "SUCCESS" "✅ Docker has been successfully installed."
+    else
+        log "ERROR" "❌ Docker installation failed. Please install Docker manually."
+        exit 1
+    fi
+fi
+
 log "INFO" "🔄 Cloning DA-Client repository"
 if [ ! -d "0g-da-client" ]; then
     git clone https://github.com/0glabs/0g-da-client.git
@@ -51,7 +65,6 @@ else
     log "INFO" "📁 Repository exists. Pulling latest changes."
     cd 0g-da-client && git pull && cd ..
 fi
-
 log "INFO" "🐳 Building Docker Image"
 cd 0g-da-client
 if ! docker image inspect 0g-da-client &> /dev/null; then
@@ -59,16 +72,13 @@ if ! docker image inspect 0g-da-client &> /dev/null; then
 else
     log "SUCCESS" "✅ Docker image already built."
 fi
-
 log "INFO" "🔑 Input Private Key"
 read -p "Enter your private key: " PRIVATE_KEY
 PRIVATE_KEY=${PRIVATE_KEY#0x}
-
 if [[ ! $PRIVATE_KEY =~ ^[a-fA-F0-9]{64}$ ]]; then
     log "ERROR" "❌ Invalid private key format. Please enter a valid 64-character hex key."
     exit 1
 fi
-
 cat <<EOF > envfile.env
 COMBINED_SERVER_CHAIN_RPC=https://evmrpc-testnet.0g.ai
 COMBINED_SERVER_PRIVATE_KEY=$PRIVATE_KEY
@@ -98,12 +108,9 @@ BATCHER_SIGNING_TIMEOUT=60s
 BATCHER_CHAIN_READ_TIMEOUT=12s
 BATCHER_CHAIN_WRITE_TIMEOUT=13s
 EOF
-
 log "INFO" "🚀 Starting Node"
 docker run -d --env-file envfile.env --name 0g-da-client -v $(pwd)/run:/runtime -p 51001:51001 0g-da-client combined
-
 log "SUCCESS" "🎉 0g-da-client node has been successfully installed and started."
 log "SUCCESS" "💡 To view logs, use the following command:"
 echo -e "${YELLOW}docker logs -f 0g-da-client${NC}"
-
 log "SUCCESS" "✅ Installation Complete! Happy Node Running! 🎊"
